@@ -9,39 +9,47 @@ on:
 jobs:
   security-scan:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
     steps:
       - uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.x"
+          python-version: "3.11" # Specify exact version for reproducibility
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install bandit
-          pip install bandit2sarif
+          pip install bandit bandit-sarif-formatter
 
       - name: Run Bandit scan
         run: |
-          bandit -r . -f json -o bandit-results.json || true
-        # The || true ensures the step doesn't fail the workflow
+          bandit -r . -f json -o bandit-output.json || true
+          bandit-sarif-formatter -i bandit-output.json -o bandit-results.sarif
 
-      - name: Convert Bandit output to SARIF
-        if: always()
-        run: |
-          bandit2sarif -i bandit-results.json -o bandit-results.sarif
-
-      - name: Upload Bandit results
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v2
         if: always()
         with:
           sarif_file: bandit-results.sarif
+          wait-for-processing: true
 
-      - name: Check Bandit results
+      - name: Check for high severity issues
+        if: always()
         run: |
-          if grep -q '"issue_severity": "HIGH"' bandit-results.json; then
-            echo "High severity issues found"
+          if [ -f bandit-output.json ]; then
+            if jq -e '.results[] | select(.issue_severity == "HIGH")' bandit-output.json > /dev/null; then
+              echo "::error::High severity security issues found in the scan"
+              jq '.results[] | select(.issue_severity == "HIGH") | {severity: .issue_severity, file: .filename, issue: .issue_text}' bandit-output.json
+              exit 1
+            else
+              echo "No high severity issues found"
+            fi
+          else
+            echo "::error::Bandit output file not found"
             exit 1
           fi
