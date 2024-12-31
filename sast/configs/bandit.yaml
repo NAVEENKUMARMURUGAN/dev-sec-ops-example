@@ -1,0 +1,21 @@
+# Bandit configuration file
+
+exclude_dirs: ["tests", "venv", ".git", "__pycache__"]
+
+skips: [
+    "B101", # Skip assert warnings
+    "B404", # Skip import subprocess warnings
+  ]
+
+profiles:
+  medium:
+    include:
+      - B201 # Flask app debug mode
+      - B301 # Pickle usage
+      - B506 # Yaml load
+      - B602 # subprocess shell true
+  high:
+    include:
+      - B601 # Shell injection
+      - B608 # Hardcoded SQL
+      - B611 # XSS

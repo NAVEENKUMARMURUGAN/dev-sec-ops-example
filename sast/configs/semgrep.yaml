@@ -1,0 +1,20 @@
+rules:
+  - id: sql-injection
+    pattern: 'execute("SELECT * FROM " + $TABLE + " WHERE " + $CONDITION)'
+    message: "Potential SQL injection detected"
+    severity: ERROR
+    languages: [python, java]
+
+  - id: hardcoded-secret
+    patterns:
+      - pattern: 'password = "$SECRET"'
+      - pattern: 'api_key = "$KEY"'
+    message: "Hardcoded secret detected"
+    severity: ERROR
+    languages: [python, javascript, java]
+
+  - id: command-injection
+    pattern: "os.system($CMD)"
+    message: "Potential command injection detected"
+    severity: ERROR
+    languages: [python]
