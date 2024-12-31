@@ -3,11 +3,9 @@ name: SAST Checks
 on:
   push:
     paths:
-      - "src/**"
       - "sast/**"
   pull_request:
     paths:
-      - "src/**"
       - "sast/**"
 
 jobs:
@@ -29,7 +27,7 @@ jobs:
       - name: Bandit Scan
         run: |
           pip install bandit
-          bandit -r ./src -f json -o sast-results.json
+          bandit -r ./sast -f json -o sast-results.json
 
       - name: Upload SAST Results
         uses: actions/upload-artifact@v3
