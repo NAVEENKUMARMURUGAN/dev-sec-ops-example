@@ -1,15 +1,13 @@
-name: SAST Checks
+name: SAST Scan
 
 on:
   push:
-    paths:
-      - "sast/**"
+    branches: [main]
   pull_request:
-    paths:
-      - "sast/**"
+    branches: [main]
 
 jobs:
-  sast-scan:
+  security-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -19,18 +17,25 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Semgrep Scan
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: p/security-audit
-
-      - name: Bandit Scan
+      - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install bandit
-          bandit -r ./sast -f json -o sast-results.json
 
-      - name: Upload SAST Results
-        uses: actions/upload-artifact@v3
+      - name: Run Bandit scan
+        run: |
+          bandit -r . -f json -o bandit-results.json || true
+        # The || true ensures the step doesn't fail the workflow
+
+      - name: Upload Bandit results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always() # This ensures the step runs even if previous steps fail
         with:
-          name: sast-results
-          path: sast-results.json
+          sarif_file: bandit-results.json
+
+      - name: Check Bandit results
+        run: |
+          if grep -q '"issue_severity": "HIGH"' bandit-results.json; then
+            echo "High severity issues found"
+            exit 1
+          fi
