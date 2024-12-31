@@ -39,7 +39,7 @@ sast/
 
    ```bash
    # Using Bandit
-   bandit -r ../src -f json -o results.json
+   bandit -r ../sast -f json -o results.json
 
    # Using Semgrep
    semgrep --config=p/security-audit
