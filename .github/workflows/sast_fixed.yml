@@ -18,6 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      # Install Node.js and npm
+      - name: Install Node.js and npm
+        run: |
+          apt-get update
+          apt-get install -y curl
+          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+          apt-get install -y nodejs
+
       # Install Snyk
       - name: Install Snyk CLI
         run: |
