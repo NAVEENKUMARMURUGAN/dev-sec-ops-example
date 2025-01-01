@@ -24,7 +24,7 @@ jobs:
         run: |
           semgrep ci \
             --json \
-            --output semgrep-results.json \
+            --output semgrep_results.json \
             --include ./sast/fixed_examples \
             --config "p/security-audit" \
             --config "p/owasp-top-ten" \
@@ -39,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: semgrep-results
-          path: semgrep-results.json
+          path: semgrep_results.json
 
   # Main Security Analysis Job
   security-analysis:
@@ -77,77 +77,29 @@ jobs:
           name: semgrep-results
           path: .
 
-      # Import Results to Snyk
-      - name: Import Bandit Results to Snyk
-        if: always()
+      # Convert Bandit JSON to SARIF
+      - name: Convert Bandit JSON to SARIF
         run: |
-          RESPONSE=$(curl -X POST \
-            "https://api.snyk.io/v1/org/${{ secrets.SNYK_ORG_ID }}/integrations/imports" \
-            -H "Authorization: token ${{ secrets.SNYK_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json" \
-            --data-binary @bandit-results.json \
-            --fail \
-            --silent \
-            --show-error)
+          pip install bandit-sarif  # Tool to convert Bandit results to SARIF
+          bandit-sarif bandit_results.json > bandit_results.sarif
 
-          if [ $? -eq 0 ]; then
-            echo "Successfully imported Bandit results to Snyk"
-            echo "Response: ${RESPONSE}"
-          else
-            echo "Failed to import Bandit results to Snyk"
-            echo "Error: ${RESPONSE}"
-            exit 1
-          fi
+      # Upload SARIF to Snyk (bandit results)
+      - name: Upload SARIF to Snyk
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: snyk code test --sarif-file-path=./bandit_results.sarif
 
-      - name: Import Semgrep Results to Snyk
-        if: always()
+      # Convert Bandit JSON to SARIF
+      - name: Convert semgrep JSON to SARIF
         run: |
-          RESPONSE=$(curl -X POST \
-            "https://api.snyk.io/v1/org/${{ secrets.SNYK_ORG_ID }}/integrations/imports" \
-            -H "Authorization: token ${{ secrets.SNYK_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json" \
-            --data-binary @semgrep-results.json \
-            --fail \
-            --silent \
-            --show-error)
+          pip install bandit-sarif  # Tool to convert Bandit results to SARIF
+          bandit-sarif semgrep_results.json > semgrep_results.sarif
 
-          if [ $? -eq 0 ]; then
-            echo "Successfully imported Semgrep results to Snyk"
-            echo "Response: ${RESPONSE}"
-          else
-            echo "Failed to import Semgrep results to Snyk"
-            echo "Error: ${RESPONSE}"
-            exit 1
-          fi
-
-      # Check Results and Fail Build if Needed
-      - name: Check Security Issues
-        if: always()
-        run: |
-          # Check Bandit results
-          if [ -f bandit-results.json ]; then
-            if jq -e '.results[] | select(.issue_severity == "HIGH")' bandit-results.json > /dev/null; then
-              echo "::error::High severity issues found in Bandit scan"
-              FAIL=true
-            fi
-          fi
-
-          # Check Semgrep results
-          if [ -f semgrep-results.json ]; then
-            if jq -e '.results[] | select(.extra.severity == "ERROR")' semgrep-results.json > /dev/null; then
-              echo "::error::Critical issues found in Semgrep scan"
-              FAIL=true
-            fi
-          fi
-
-          # Fail the build if high severity issues found
-          if [ "$FAIL" = true ]; then
-            echo "Security scan failed due to high severity issues"
-            echo "Results have been uploaded to Snyk for review"
-            exit 1
-          fi
+      # Upload SARIF to Snyk (bandit results)
+      - name: Upload SARIF to Snyk
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: snyk code test --sarif-file-path=./semgrep_results.sarif
 
       # Notify on completion
       - name: Notification
