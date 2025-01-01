@@ -26,6 +26,7 @@ jobs:
             --json \
             --output semgrep_results.json \
             --include ./sast/vulnerable_examples \
+            --config ./sast/configs/semgrep.yaml \
             --config "p/security-audit" \
             --config "p/owasp-top-ten" \
             --config "p/cwe-top-25"
@@ -62,7 +63,7 @@ jobs:
         continue-on-error: true
         run: |
           pip install bandit
-          bandit -r ./sast/vulnerable_examples -ll -f json -o bandit-results.json
+          bandit -r ./sast/vulnerable_examples -c ./sast/configs/bandit.yaml -ll -f json -o bandit-results.json
 
       # Upload results for other jobs
       - name: Upload bandit Results

@@ -2,45 +2,67 @@
 
 ## Overview
 
-Static Application Security Testing analyzes source code for potential security vulnerabilities without executing the application. This directory demonstrates SAST implementation using various tools.
+Static Application Security Testing analyzes source code for potential security vulnerabilities without executing the application. This repository implements SAST using Bandit and Semgrep.
 
-## Tools Demonstrated
+## Tools Configuration
 
-- Semgrep
-- Bandit (Python)
-- ESLint Security (JavaScript)
+### Bandit
 
-## Directory Structure
+Located in `configs/bandit.yaml`:
 
-```
-sast/
-├── configs/                 # Tool configurations
-├── examples/               # Vulnerable code examples
-└── rules/                  # Custom security rules
-```
+- Excludes test directories and cache files
+- Skips certain warnings (B101, B404)
+- Configured with medium and high severity profiles
+- Detects issues like:
+  - Flask debug mode
+  - Unsafe pickle usage
+  - YAML loading vulnerabilities
+  - Shell/SQL injection risks
 
-## Common Vulnerabilities Detected
+### Semgrep
 
-- SQL Injection
-- Cross-site Scripting (XSS)
-- Command Injection
-- Hardcoded Credentials
-- Insecure Direct Object References
-- Buffer Overflows
-- Path Traversal
+Located in `configs/semgrep.yaml`:
+
+- Custom rules for:
+  - SQL injection detection
+  - Hardcoded secrets
+  - Command injection vulnerabilities
+- Supports multiple languages (Python, Java, JavaScript)
+
+## Example Vulnerabilities
+
+The `vulnerable_examples/` directory contains sample code demonstrating:
+
+- Weak cryptography usage
+- SQL injection risks
+- Cross-site scripting (XSS)
+- Hardcoded secrets
+- Unsafe deserialization
+
+## CI/CD Integration
+
+SAST is integrated into the CI/CD pipeline via GitHub Actions:
+
+- Runs on push/PR to main branch
+- Executes both Bandit and Semgrep scans
+- Reports results to GitHub Security dashboard
+- Fails pipeline on high-severity findings
 
 ## Quick Start
 
-1. Install required tools:
+1. Local setup:
+
    ```bash
-   pip install bandit semgrep
+   pip install bandit
+   pip install semgrep
    ```
-2. Run SAST checks:
+
+2. Run scans:
 
    ```bash
-   # Using Bandit
-   bandit -r ../sast -f json -o results.json
+   # Bandit scan
+   bandit -r . -c ./sast/configs/bandit.yaml
 
-   # Using Semgrep
-   semgrep --config=p/security-audit
+   # Semgrep scan
+   semgrep --config ./sast/configs/semgrep.yaml
    ```
