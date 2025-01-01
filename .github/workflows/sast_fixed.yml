@@ -1,4 +1,4 @@
-name: Security Analysis
+name: Good Code Scan
 
 on:
   push:
@@ -42,20 +42,14 @@ jobs:
           path: semgrep_results.json
 
   # Main Security Analysis Job
-  security-analysis:
-    needs: semgrep
+  bandit:
+    name: Bandit Scan
     runs-on: ubuntu-latest
     permissions:
       security-events: write
       contents: read
     steps:
       - uses: actions/checkout@v3
-
-      # Setup Node.js
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: "18"
 
       # Setup Python
       - name: Set up Python
@@ -70,7 +64,7 @@ jobs:
           pip install bandit
           bandit -r ./sast/fixed_examples -ll -f json -o bandit-results.json
 
-          # Upload results for other jobs
+      # Upload results for other jobs
       - name: Upload bandit Results
         uses: actions/upload-artifact@v3
         with:
