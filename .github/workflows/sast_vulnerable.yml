@@ -1,4 +1,4 @@
-name: sastSecurity Analysis
+name: Security Analysis
 
 on:
   push:
@@ -7,43 +7,20 @@ on:
     branches: [main]
 
 jobs:
-  security-analysis:
+  # Semgrep Job with Container
+  semgrep:
+    name: Semgrep Scan
     runs-on: ubuntu-latest
     container:
       image: semgrep/semgrep
     permissions:
       security-events: write
       contents: read
-
     steps:
       - uses: actions/checkout@v3
 
-      # Install Node.js and npm
-      - name: Install Node.js and npm
-        run: |
-          apt-get update
-          apt-get install -y curl
-          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-          apt-get install -y nodejs
-
-      # Install Snyk
-      - name: Install Snyk CLI
-        run: |
-          npm install -g snyk
-          snyk auth ${{ secrets.SNYK_TOKEN }}
-
-      # Code Analysis - Bandit
-      - name: Run Bandit
-        continue-on-error: true # Don't fail yet, we'll check results later
-        run: |
-          pip install bandit
-          bandit -r ./sast/vulnerable_examples -ll -f json -o bandit-results.json
-          bandit -r ./sast/vulnerable_examples -ll -f sarif -o bandit-results.sarif
-
-      # Pattern Matching - Semgrep
       - name: Run Semgrep
         if: (github.actor != 'dependabot[bot]')
-        continue-on-error: true
         run: |
           semgrep ci \
             --sarif \
@@ -54,24 +31,84 @@ jobs:
             --config "p/cwe-top-25"
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-          # Additional configurations
-          SEMGREP_RULES: |
-            p/security-audit
-            p/owasp-top-ten
-            p/cwe-top-25
           SEMGREP_TIMEOUT: 300
           SEMGREP_BASELINE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
 
-      # Data Flow Analysis - CodeQL
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: python
-          queries: security-extended
+      # Install Node.js and npm in container
+      - name: Install Node.js and npm
+        run: |
+          apt-get update
+          apt-get install -y curl
+          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+          apt-get install -y nodejs
 
-      - name: Run CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+      # Install and configure Snyk
+      - name: Install Snyk
+        run: |
+          npm install -g snyk
+          snyk auth ${{ secrets.SNYK_TOKEN }}
+
+      # Import Semgrep results to Snyk
+      - name: Import Semgrep Results to Snyk
+        if: always()
+        run: |
+          snyk api import \
+            --org=${{ secrets.SNYK_ORG_ID }} \
+            --file=semgrep-results.sarif \
+            --project-name=${{ github.repository }}-semgrep \
+            --source=semgrep
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      # Upload results for other jobs
+      - name: Upload Semgrep Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: semgrep-results
+          path: semgrep-results.sarif
+
+  # Main Security Analysis Job
+  security-analysis:
+    needs: semgrep
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+
+      # Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+
+      # Install Snyk
+      - name: Install Snyk CLI
+        run: |
+          npm install -g snyk
+          snyk auth ${{ secrets.SNYK_TOKEN }}
+
+      # Setup Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      # Code Analysis - Bandit
+      - name: Run Bandit
         continue-on-error: true
+        run: |
+          pip install bandit
+          bandit -r ./sast/vulnerable_examples -ll -f json -o bandit-results.json
+          bandit -r ./sast/vulnerable_examples -ll -f sarif -o bandit-results.sarif
+
+      # Download Semgrep Results
+      - name: Download Semgrep Results
+        uses: actions/download-artifact@v3
+        with:
+          name: semgrep-results
+          path: .
 
       # Import Results to Snyk
       - name: Import Bandit Results to Snyk
