@@ -23,8 +23,8 @@ jobs:
         if: (github.actor != 'dependabot[bot]')
         run: |
           semgrep ci \
-            --sarif \
-            --output semgrep-results.sarif \
+            --json \
+            --output semgrep-results.json \
             --include ./sast/fixed_examples \
             --config "p/security-audit" \
             --config "p/owasp-top-ten" \
@@ -39,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: semgrep-results
-          path: semgrep-results.sarif
+          path: semgrep-results.json
 
   # Main Security Analysis Job
   security-analysis:
@@ -57,12 +57,6 @@ jobs:
         with:
           node-version: "18"
 
-      # Install Snyk
-      - name: Install Snyk CLI
-        run: |
-          npm install -g snyk
-          snyk auth ${{ secrets.SNYK_TOKEN }}
-
       # Setup Python
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -75,7 +69,6 @@ jobs:
         run: |
           pip install bandit
           bandit -r ./sast/fixed_examples -ll -f json -o bandit-results.json
-          bandit -r ./sast/fixed_examples -ll -f sarif -o bandit-results.sarif
 
       # Download Semgrep Results
       - name: Download Semgrep Results
@@ -88,24 +81,46 @@ jobs:
       - name: Import Bandit Results to Snyk
         if: always()
         run: |
-          snyk api import \
-            --org=${{ secrets.SNYK_ORG_ID }} \
-            --file=bandit-results.sarif \
-            --project-name=${{ github.repository }}-bandit \
-            --source=bandit
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          RESPONSE=$(curl -X POST \
+            "https://api.snyk.io/v1/org/${{ secrets.SNYK_ORG_ID }}/integrations/imports" \
+            -H "Authorization: token ${{ secrets.SNYK_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            --data-binary @bandit-results.json \
+            --fail \
+            --silent \
+            --show-error)
+
+          if [ $? -eq 0 ]; then
+            echo "Successfully imported Bandit results to Snyk"
+            echo "Response: ${RESPONSE}"
+          else
+            echo "Failed to import Bandit results to Snyk"
+            echo "Error: ${RESPONSE}"
+            exit 1
+          fi
 
       - name: Import Semgrep Results to Snyk
         if: always()
         run: |
-          snyk api import \
-            --org=${{ secrets.SNYK_ORG_ID }} \
-            --file=semgrep-results.sarif \
-            --project-name=${{ github.repository }}-semgrep \
-            --source=semgrep
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          RESPONSE=$(curl -X POST \
+            "https://api.snyk.io/v1/org/${{ secrets.SNYK_ORG_ID }}/integrations/imports" \
+            -H "Authorization: token ${{ secrets.SNYK_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            --data-binary @semgrep-results.json \
+            --fail \
+            --silent \
+            --show-error)
+
+          if [ $? -eq 0 ]; then
+            echo "Successfully imported Semgrep results to Snyk"
+            echo "Response: ${RESPONSE}"
+          else
+            echo "Failed to import Semgrep results to Snyk"
+            echo "Error: ${RESPONSE}"
+            exit 1
+          fi
 
       # Check Results and Fail Build if Needed
       - name: Check Security Issues
@@ -120,8 +135,8 @@ jobs:
           fi
 
           # Check Semgrep results
-          if [ -f semgrep-results.sarif ]; then
-            if jq -e '.runs[].results[] | select(.level == "error")' semgrep-results.sarif > /dev/null; then
+          if [ -f semgrep-results.json ]; then
+            if jq -e '.results[] | select(.extra.severity == "ERROR")' semgrep-results.json > /dev/null; then
               echo "::error::Critical issues found in Semgrep scan"
               FAIL=true
             fi
@@ -133,14 +148,6 @@ jobs:
             echo "Results have been uploaded to Snyk for review"
             exit 1
           fi
-
-      # Run Snyk's Own Security Test
-      - name: Run Snyk Code Test
-        if: always()
-        run: |
-          snyk code test --json | tee snyk-results.json
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
       # Notify on completion
       - name: Notification
