@@ -38,8 +38,8 @@ jobs:
       - name: Upload Semgrep Results
         uses: actions/upload-artifact@v3
         with:
-          name: semgrep-results
-          path: semgrep_results.json
+          name: semgrep-results-fixed
+          path: semgrep_results_fixed.json
 
   # Main Security Analysis Job
   bandit:
@@ -62,11 +62,11 @@ jobs:
         continue-on-error: true
         run: |
           pip install bandit
-          bandit -r ./sast/fixed_examples -ll -f json -o bandit-results.json
+          bandit -r ./sast/fixed_examples -ll -f json -o bandit-results-fixed.json
 
       # Upload results for other jobs
       - name: Upload bandit Results
         uses: actions/upload-artifact@v3
         with:
-          name: bandit-results
-          path: bandit-results.json
+          name: bandit-results-fixed
+          path: bandit-results-fixed.json
