@@ -34,32 +34,6 @@ jobs:
           SEMGREP_TIMEOUT: 300
           SEMGREP_BASELINE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
 
-      # Install Node.js and npm in container
-      - name: Install Node.js and npm
-        run: |
-          apt-get update
-          apt-get install -y curl
-          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-          apt-get install -y nodejs
-
-      # Install and configure Snyk
-      - name: Install Snyk
-        run: |
-          npm install -g snyk
-          snyk auth ${{ secrets.SNYK_TOKEN }}
-
-      # Import Semgrep results to Snyk
-      - name: Import Semgrep Results to Snyk
-        if: always()
-        run: |
-          snyk api import \
-            --org=${{ secrets.SNYK_ORG_ID }} \
-            --file=semgrep-results.sarif \
-            --project-name=${{ github.repository }}-semgrep \
-            --source=semgrep
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
       # Upload results for other jobs
       - name: Upload Semgrep Results
         uses: actions/upload-artifact@v3
