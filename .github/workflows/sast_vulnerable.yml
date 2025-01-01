@@ -70,40 +70,9 @@ jobs:
           pip install bandit
           bandit -r ./sast/vulnerable_examples -ll -f json -o bandit-results.json
 
-      # Download Semgrep Results
-      - name: Download Semgrep Results
-        uses: actions/download-artifact@v3
+          # Upload results for other jobs
+      - name: Upload bandit Results
+        uses: actions/upload-artifact@v3
         with:
-          name: semgrep-results
-          path: .
-
-      # Convert Bandit JSON to SARIF
-      - name: Convert Bandit JSON to SARIF
-        run: |
-          pip install bandit-sarif  # Tool to convert Bandit results to SARIF
-          bandit-sarif bandit_results.json > bandit_results.sarif
-
-      # Upload SARIF to Snyk (bandit results)
-      - name: Upload SARIF to Snyk
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: snyk code test --sarif-file-path=./bandit_results.sarif
-
-      # Convert Bandit JSON to SARIF
-      - name: Convert semgrep JSON to SARIF
-        run: |
-          pip install bandit-sarif  # Tool to convert Bandit results to SARIF
-          bandit-sarif semgrep_results.json > semgrep_results.sarif
-
-      # Upload SARIF to Snyk (bandit results)
-      - name: Upload SARIF to Snyk
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: snyk code test --sarif-file-path=./semgrep_results.sarif
-
-      # Notify on completion
-      - name: Notification
-        if: always()
-        run: |
-          echo "Security scan completed"
-          echo "Results uploaded to Snyk at: https://app.snyk.io/org/${{ secrets.SNYK_ORG_ID }}/projects"
+          name: bandit-results
+          path: bandit-results.json
