@@ -1,0 +1,131 @@
+name: Security Analysis
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-analysis:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v3
+
+      # Install Snyk
+      - name: Install Snyk CLI
+        run: |
+          npm install -g snyk
+          snyk auth ${{ secrets.SNYK_TOKEN }}
+
+      # Code Analysis - Bandit
+      - name: Run Bandit
+        continue-on-error: true # Don't fail yet, we'll check results later
+        run: |
+          pip install bandit
+          bandit -r ./sast/vulnerable_examples -ll -f json -o bandit-results.json
+          bandit -r ./sast/vulnerable_examples -ll -f sarif -o bandit-results.sarif
+
+      # Pattern Matching - Semgrep
+      - name: Run Semgrep
+        if: (github.actor != 'dependabot[bot]')
+        continue-on-error: true
+        run: |
+          semgrep ci \
+            --sarif \
+            --output semgrep-results.sarif \
+            --include ./sast/vulnerable_examples \
+            --config "p/security-audit" \
+            --config "p/owasp-top-ten" \
+            --config "p/cwe-top-25"
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+          # Additional configurations
+          SEMGREP_RULES: |
+            p/security-audit
+            p/owasp-top-ten
+            p/cwe-top-25
+          SEMGREP_TIMEOUT: 300
+          SEMGREP_BASELINE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+
+      # Data Flow Analysis - CodeQL
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          queries: security-extended
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        continue-on-error: true
+
+      # Import Results to Snyk
+      - name: Import Bandit Results to Snyk
+        if: always()
+        run: |
+          snyk api import \
+            --org=${{ secrets.SNYK_ORG_ID }} \
+            --file=bandit-results.sarif \
+            --project-name=${{ github.repository }}-bandit \
+            --source=bandit
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Import Semgrep Results to Snyk
+        if: always()
+        run: |
+          snyk api import \
+            --org=${{ secrets.SNYK_ORG_ID }} \
+            --file=semgrep-results.sarif \
+            --project-name=${{ github.repository }}-semgrep \
+            --source=semgrep
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      # Check Results and Fail Build if Needed
+      - name: Check Security Issues
+        if: always()
+        run: |
+          # Check Bandit results
+          if [ -f bandit-results.json ]; then
+            if jq -e '.results[] | select(.issue_severity == "HIGH")' bandit-results.json > /dev/null; then
+              echo "::error::High severity issues found in Bandit scan"
+              FAIL=true
+            fi
+          fi
+
+          # Check Semgrep results
+          if [ -f semgrep-results.sarif ]; then
+            if jq -e '.runs[].results[] | select(.level == "error")' semgrep-results.sarif > /dev/null; then
+              echo "::error::Critical issues found in Semgrep scan"
+              FAIL=true
+            fi
+          fi
+
+          # Fail the build if high severity issues found
+          if [ "$FAIL" = true ]; then
+            echo "Security scan failed due to high severity issues"
+            echo "Results have been uploaded to Snyk for review"
+            exit 1
+          fi
+
+      # Run Snyk's Own Security Test
+      - name: Run Snyk Code Test
+        if: always()
+        run: |
+          snyk code test --json | tee snyk-results.json
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      # Notify on completion
+      - name: Notification
+        if: always()
+        run: |
+          echo "Security scan completed"
+          echo "Results uploaded to Snyk at: https://app.snyk.io/org/${{ secrets.SNYK_ORG_ID }}/projects"
